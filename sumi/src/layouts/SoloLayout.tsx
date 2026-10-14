@@ -23,6 +23,7 @@ import { SlotLocation, SlotRenderer } from '@opensumi/ide-core-browser';
 import { SplitPanel, PanelContext } from '@opensumi/ide-core-browser/lib/components';
 import { useInjectable } from '@opensumi/ide-core-browser/lib/react-hooks/injectable-hooks';
 import { ITerminalController } from '@opensumi/ide-terminal-next/lib/common';
+import { IMainLayoutService } from '@opensumi/ide-main-layout/lib/common';
 
 import { WorkspacePicker } from '../extensions/workspace/WorkspacePicker';
 import { FilePicker } from '../extensions/file';
@@ -66,6 +67,7 @@ function AsideExplorer({ collapsed, savedSize }: { collapsed: boolean; savedSize
 
 export function SoloLayout(): React.ReactElement {
   const layout = useInjectable<ILayoutService>(LayoutToken);
+  const mainLayout = useInjectable<IMainLayoutService>(IMainLayoutService);
   const terminals = useInjectable<ITerminalController>(ITerminalController);
   // 每次渲染取最新状态 (service 广播 → 本组件 subscribe 触发重渲染)
   const { sidebar, aside } = layout.state;
@@ -90,6 +92,22 @@ export function SoloLayout(): React.ReactElement {
       }
     });
   }, [terminals, layout]);
+
+  // aside 底部终端面板: **强制默认折叠** (用户拍板 2026-10).
+  // 背景: opensumi `toggleSlot(slot, /*show*/ false)` 只清 currentContainerId (**内容隐藏但不改尺寸**) →
+  // 旧的持久化尺寸会留下"有高度但空白"的面板 (devtools: tab_panel_hidden + 231px).
+  // 这里直接对底部 slot 的 resizeHandle `setSize(0)` 真正把高度收到 0 (tab 条仍在, 点「终端」可再展开).
+  // 只在挂载后收敛两次 (等 tabbarService 就绪); **不订阅** size 变化 — 否则会与用户手动展开打架.
+  useEffect(() => {
+    const collapse = () => {
+      try {
+        mainLayout.getTabbarService(SlotLocation.bottom)?.resizeHandle?.setSize(0);
+      } catch { /* service 未就绪 */ }
+    };
+    const t1 = window.setTimeout(collapse, 500);
+    const t2 = window.setTimeout(collapse, 2000);
+    return () => { window.clearTimeout(t1); window.clearTimeout(t2); };
+  }, [mainLayout]);
 
   // aside 打开时: 视口变化同步到 60% (resize 由 service 处理)
   useEffect(() => {
