@@ -26,6 +26,10 @@ export const styles = `
 .app-side-topbar__mode-row {
   display: flex; align-items: center; justify-content: space-between;
 }
+/* 左组: 版本标识 + 模式切换 (版本标识在按钮左侧, 窄侧栏下可收缩换行前先压缩) */
+.app-side-topbar__mode-left {
+  display: flex; align-items: center; gap: 8px; min-width: 0;
+}
 .app-side-topbar__mode {
   display: inline-flex; align-items: center; gap: 8px;
   height: 32px;

@@ -10,6 +10,7 @@ import { useInjectable } from '@opensumi/ide-core-browser/lib/react-hooks/inject
 import { CommandService } from '@opensumi/ide-core-common';
 import { getAppMode, setAppMode, type AppMode } from '../../../../App';
 import { LAYOUT_COMMANDS } from '../../../../service/layout';
+import { VersionBadge } from '../../version';
 import { styles } from './styles';
 
 const ModeSwitch: React.FC = () => {
@@ -73,7 +74,10 @@ export const SideTopbar: React.FC = () => {
       <style>{styles}</style>
       <div className="app-side-topbar">
         <div className="app-side-topbar__mode-row">
-          <ModeSwitch />
+          <div className="app-side-topbar__mode-left">
+            <VersionBadge />
+            <ModeSwitch />
+          </div>
           <CollapseToggle />
         </div>
       </div>

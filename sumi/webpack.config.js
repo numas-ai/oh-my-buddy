@@ -350,6 +350,9 @@ const config = {
             // dev/容器一致无跨源; 运行时 --registry 注入覆盖 (外部自建市场 URL 亦可).
             __APP_REGISTRY_BASE_URL__: JSON.stringify(getEnv('REGISTRY_BASE_URL', '/extensions')),
             __APP_DEPLOY_ENV__: JSON.stringify(process.env.DEPLOY_ENV || 'development'),
+            // 产品版本号单一来源 = 仓库根 package.json (docker-build.sh / dev.js 同源),
+            // 供前端版本标识 (「公测版 vX.Y.Z」) 使用; 升版只改根 package.json.
+            __APP_VERSION__: JSON.stringify(require(path_1.default.resolve(PROJECT_ROOT, 'package.json')).version),
         }),
         // 第三方库（opensumi/codeblitz）浏览器 fallback: 构建期 polyfill, src 本身零 node 依赖
         new node_polyfill_webpack_plugin_1.default({ includeAliases: ['process', 'Buffer'] }),
