@@ -6,6 +6,7 @@
  * (ActionBar / Sidebar) 经 executeCommand 或直接调方法.
  *
  * 状态转移规则:
+ *   - **默认布局 (首次启动, 无持久化)**: sidebar 隐藏 + aside 展开 (aside 宽 = 视口 60%)
  *   - sidebar 折叠 = collapsed boolean (折叠时不渲染, 不用 1px 占位)
  *   - 折叠时记住展开宽度, 展开恢复
  *   - **严格互补 (互斥): 两列永远至少一列可见 (aside.open ⇔ sidebar.collapsed)**
@@ -33,8 +34,9 @@ const ASIDE_RATIO = 0.6;
 /** sidebar 默认宽度 = 固定 300px */
 const SIDEBAR_DEFAULT_W = 300;
 
-/** 布局状态持久化 key (全量: sidebar 折叠/宽 + aside 开合/宽/视图/explorer 折叠 + 手动宽度标记) */
-const STORAGE_KEY = 'NUMAS_SOLO_LAYOUT_V1';
+/** 布局状态持久化 key (全量: sidebar 折叠/宽 + aside 开合/宽/视图/explorer 折叠 + 手动宽度标记)
+ *  V2 (2026-10): 默认布局改为 sidebar 隐藏 + aside 展开 → 升版以让旧浏览器也吃新默认 (旧 V1 数据作废) */
+const STORAGE_KEY = 'NUMAS_SOLO_LAYOUT_V2';
 const VALID_VIEWS: AsideView[] = ['view', 'browser'];
 
 function viewportRatioWidth(ratio: number = ASIDE_RATIO): number {
@@ -79,6 +81,16 @@ export class LayoutServiceImpl implements ILayoutService {
   /** 从 localStorage 恢复状态 (字段校验 + 范围收敛; 损坏数据静默回默认) */
   private restore(): void {
     const p = loadPersisted();
+    // 无任何持久化布局 = 首次启动 → 用显式默认 (用户拍板 2026-10):
+    //   sidebar 隐藏 + aside 展开 (aside 宽 = 视口 60%), 只留一列可见, 与互补规则一致.
+    //   (此前靠 "挂载后 workdir 变化 → openAside" 的竞态产生该效果, 时对时错 → 改为显式默认.)
+    if (Object.keys(p).length === 0) {
+      this.expandedSidebarW = SIDEBAR_DEFAULT_W;
+      this._state.sidebar = { collapsed: true, width: SIDEBAR_DEFAULT_W };
+      this._state.aside = { open: true, width: viewportRatioWidth(), view: 'view', explorerCollapsed: false };
+      this.asideWidthManual = false;
+      return;
+    }
     const sb = p.sidebar || {};
     const as = p.aside || {};
     const sbW = Number.isFinite(sb.width) ? clampSidebarW(sb.width) : SIDEBAR_DEFAULT_W;

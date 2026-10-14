@@ -146,6 +146,15 @@
   /* 浏览器视图是 position:absolute inset:0, 需要 middle 作包含块 (否则定位到整个 aside, 与顶部 action 重叠) */
   position: relative;
 }
+/* aside 内 explorer|main 间隔: 同 IDE 逻辑 — 拖拽条从"叠加式分割线"改成**真实留白** (1px),
+   底色用与顶部 action 栏同款规则 (否则白底对白底=看不见). */
+.app-solo__aside-middle [class*="resize-handle-horizontal"] {
+  width: 1px !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  background: color-mix(in srgb, var(--editor-background, #ffffff) 97%, var(--editor-foreground, #1f2328)) !important;
+}
+.app-solo__aside-middle [class*="resize-handle-horizontal"]::before { display: none !important; }
 .app-solo__aside-sidebar {
   flex: 0 0 268px; width: 268px; min-width: 0;
   display: flex; flex-direction: column;
