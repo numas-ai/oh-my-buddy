@@ -4,6 +4,7 @@ import { CommandService } from '@opensumi/ide-core-common';
 import { onEvent } from '@/service/event/eventBus';
 import { aiListMessages } from '@/extensions/chat/commands/api';
 import { MessageRow } from '../components/MessageRow';
+import { useCopyNotifier } from '../clipboard';
 
 /**
  * 子 Agent 委派 (对齐官方 task-tool):
@@ -29,6 +30,8 @@ const noopReply = async (): Promise<void> => {};
 
 export const SubAgentCard: React.FC<{ part: any; streaming?: boolean }> = ({ part, streaming }) => {
   const commandService = useInjectable<CommandService>(CommandService);
+  // 子代理错误 → 点击复制完整错误信息
+  const { notify: notifyCopy } = useCopyNotifier();
   const status: string = part?.state?.status || 'pending';
   const input = part?.state?.input || {};
   const meta = part?.state?.metadata || {};
@@ -193,7 +196,14 @@ export const SubAgentCard: React.FC<{ part: any; streaming?: boolean }> = ({ par
       {/* 无子会话时的输出盒 (兜底) */}
       {!subSessionId && canExpand && open && (
         isError ? (
-          <div className="oc-tool__error"><pre className="oc-tool__pre">{errText}</pre></div>
+          <div
+            className="oc-tool__error is-copyable"
+            role="button"
+            tabIndex={0}
+            title="点击复制错误信息"
+            onClick={() => notifyCopy(errText)}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); notifyCopy(errText); } }}
+          ><pre className="oc-tool__pre">{errText}</pre></div>
         ) : (
           <div className="oc-tool__box">
             <div className="oc-tool__scroll"><pre className="oc-tool__pre">{outputText.slice(0, 6000)}</pre></div>

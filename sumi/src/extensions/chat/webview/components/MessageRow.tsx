@@ -1,8 +1,8 @@
 import React from 'react';
 import { useInjectable } from '@opensumi/ide-core-browser/lib/react-hooks/injectable-hooks';
-import { IMessageService } from '@opensumi/ide-overlay';
 import { PartRenderer } from '../parts/PartRenderer';
 import { getQuestionStore, extractText, formatDuration, formatTokens, formatCost, type Row } from '../helpers';
+import { useCopyNotifier } from '../clipboard';
 
 /**
  * MessageRow — 按官方 (session-ui message-part) 直接重写:
@@ -35,52 +35,6 @@ function FileAttachment({ p }: { p: any }) {
       <span className="oc-att__file-name">{p.filename || url}</span>
     </a>
   );
-}
-
-/** 复制文本: clipboard API 失败 (iframe/权限) 时回退 execCommand, 返回是否成功 */
-async function copyTextToClipboard(text: string): Promise<boolean> {
-  try {
-    if (navigator.clipboard && window.isSecureContext) {
-      await navigator.clipboard.writeText(text);
-      return true;
-    }
-  } catch { /* fallthrough */ }
-  try {
-    const ta = document.createElement('textarea');
-    ta.value = text;
-    ta.setAttribute('readonly', '');
-    ta.style.position = 'fixed';
-    ta.style.top = '0';
-    ta.style.left = '0';
-    ta.style.opacity = '0';
-    document.body.appendChild(ta);
-    ta.select();
-    const ok = document.execCommand('copy');
-    ta.remove();
-    return ok;
-  } catch {
-    return false;
-  }
-}
-
-/** 官方 clipboard 写 + 2s 后复位 check 图标; 复制失败不谎报"已复制" */
-function useCopyNotifier() {
-  const messageService = useInjectable<IMessageService>(IMessageService);
-  const [copied, setCopied] = React.useState(false);
-  const timer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const notify = React.useCallback((text: string) => {
-    void copyTextToClipboard(text).then((ok) => {
-      if (!ok) {
-        try { messageService?.warning('复制失败: 剪贴板不可用'); } catch { /* 容器外无 DI */ }
-        return;
-      }
-      setCopied(true);
-      if (timer.current) clearTimeout(timer.current);
-      timer.current = setTimeout(() => setCopied(false), 2000);
-      try { messageService?.info('已复制'); } catch { /* 容器外无 DI */ }
-    });
-  }, [messageService]);
-  return { copied, notify };
 }
 
 /** 消息 meta 时间: 完整本地化显示 (如 2026/9/15 18:10:31, 跟 modal 创建时间同款) */

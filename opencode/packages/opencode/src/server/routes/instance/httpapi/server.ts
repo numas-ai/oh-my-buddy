@@ -200,6 +200,23 @@ const docRoute = HttpRouter.use((router) => router.add("GET", "/doc", () => Effe
   Layer.provide(authOnlyRouterLayer),
 )
 
+/**
+ * numas「重启智能体」路由 (raw route, 不进声明式 HttpApi/SDK 契约):
+ *   把响应先回给客户端, 再退出进程 → 由容器/k8s 重启策略拉起 (要求部署侧配 restart policy:
+ *   docker `--restart always|unless-stopped` / k8s `restartPolicy: Always`)。
+ *   用途: 让 models.dev 目录 + provider/instance/SDK 等进程内缓存整体重建 (前端设置面板触发)。
+ *   前端: 退出后 health 轮询会显示「连接中断, 正在重连」, 服务起来后自动恢复。
+ */
+const restartRoute = HttpRouter.use((router) =>
+  router.add("POST", "/instance/restart", () =>
+    Effect.sync(() => {
+      // 延迟退出: 先让本次 HTTP 响应写完 (否则客户端拿到的是连接被硬断)
+      setTimeout(() => process.exit(0), 300)
+      return HttpServerResponse.jsonUnsafe({ restarting: true })
+    }),
+  ),
+).pipe(Layer.provide(authOnlyRouterLayer))
+
 const numasPortsRoute = (domainProxy?: string) =>
   portsRoute(domainProxy).pipe(Layer.provide(authOnlyRouterLayer), Layer.provide(ServerAuth.Config.layer))
 
@@ -308,6 +325,7 @@ export function createRoutes(
     instanceRoutes,
     serverRoutes,
     docRoute,
+    restartRoute,
     numasPortsRoute(domainProxy),
     extensionsRoute(extensionsDir),
     uiRoute(webUIRoot, registry, domainProxy),

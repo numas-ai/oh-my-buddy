@@ -265,6 +265,7 @@
   font-family: var(--font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif);
   font-size: 13px;
 }
+.app-global-loading__box.is-copyable { cursor: pointer; outline: none; }
 /* 文字流光 (shimmer) */
 .app-global-loading__text {
   background: linear-gradient(

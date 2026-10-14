@@ -726,6 +726,10 @@ export const styles = `
 .chat__session-stats-x:hover { color: var(--ai-fg); }
 /* 重试状态 (复用同一行): 琥珀警示 + 次要信息淡色 + 详情链接 */
 .chat__session-stats-notice.is-warning { color: var(--ai-warning); }
+/* 异常条可点复制完整异常信息 */
+.chat__session-stats-notice.is-copyable { cursor: pointer; outline: none; }
+.chat__session-stats-notice.is-copyable:hover { text-decoration: underline; }
+.chat__session-stats-notice.is-copyable:focus-visible { text-decoration: underline; }
 .chat__session-stats-dim { color: var(--ai-fg-muted); }
 .chat__session-stats-link {
   flex: 0 0 auto; color: var(--focusBorder, #2563eb); font-size: 11px;
@@ -936,6 +940,9 @@ export const styles = `
   border-radius: 8px;
   color: var(--ai-danger); font-size: 13px;
 }
+/* 错误信息可点复制 */
+.chat__modal-error.is-copyable { cursor: pointer; outline: none; }
+.chat__modal-error.is-copyable:hover { text-decoration: underline; }
 
 /* select view: 分组模型列表 */
 .chat__modal-group { padding: 2px 0; margin: 8px 0; }
@@ -957,6 +964,9 @@ export const styles = `
   transition: background .1s;
 }
 .chat__modal-item:hover { background: var(--ai-hover); }
+/* 危险项 (重启智能体): 标题红色 + hover 警示底 */
+.chat__modal-item.is-danger .chat__modal-item-name { color: var(--ai-danger); }
+.chat__modal-item.is-danger:hover { background: var(--ai-danger-bg); }
 /* 分组下的模型项: 左缩进对齐分组标题的服务商文字开头 (标题 padding 14 + icon 14 + gap 6 - 项 padding 12 = 22).
    注意 width 必须改 auto: item 基础 width:100% + margin-left 会撑出横向滚动条 */
 .chat__modal-group .chat__modal-item { margin-left: 22px; width: auto; }
@@ -1979,6 +1989,8 @@ export const styles = `
   background: transparent; overflow: hidden;
 }
 .oc-tool__error { border-color: var(--ai-danger-border, var(--ai-danger)); }
+/* 错误信息可点复制 (子代理错误卡; 工具卡错误另有 CopyGhost 按钮) */
+.oc-tool__error.is-copyable { cursor: pointer; outline: none; }
 .oc-tool__scroll {
   max-height: 240px; overflow: auto; padding: 10px 12px;
   scrollbar-width: thin;

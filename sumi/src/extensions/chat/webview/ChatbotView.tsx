@@ -70,6 +70,7 @@ function canNavigateHistoryAtCursor(direction: 'up' | 'down', text: string, curs
 import { onEvent } from '@/service/event/eventBus';
 import { appBaseUrl } from '@/infra/url';
 import { PartRenderer } from './parts/PartRenderer';
+import { useCopyNotifier } from './clipboard';
 import { ProviderDefs, ProviderIcon } from './parts/ProviderIcon';
 import { PermissionModal } from './parts/PermissionModal';
 import { ModelPicker } from './parts/ModelPicker';
@@ -232,11 +233,14 @@ export const ChatbotView: React.FC = () => {
   const [showCommands, setShowCommands] = useState(false);
   const [showMentions, setShowMentions] = useState(false);
   const [showSkills, setShowSkills] = useState(false);
-  /** 输入框底部设置 popover (当前只有「重新加载」) */
+  /** 输入框底部设置 popover (当前只有「重载配置」) */
   const [showSettings, setShowSettings] = useState(false);
   /** 上下文用量弹层 (stats bar 点 tokens 触发) */
   const [showContextUsage, setShowContextUsage] = useState(false);
   const [reloading, setReloading] = useState(false);
+  /** 「重启智能体」: 二次确认态 (点一次进入待确认, 4s 内再点才真执行) */
+  const [restartArmed, setRestartArmed] = useState(false);
+  const [restarting, setRestarting] = useState(false);
   const [skills, setSkills] = useState<Array<{ name: string; description?: string; location?: string }>>([]);
   /** 服务端命令 (GET /command: /init /review /undo /share /export /fork 等; 官方 `/` 列表同源) */
   const [serverCommands, setServerCommands] = useState<Array<{ name: string; description?: string; source?: string }>>([]);
@@ -555,7 +559,7 @@ export const ChatbotView: React.FC = () => {
   const loadConfigRef = useRef<() => Promise<void>>(async () => {});
   loadConfigRef.current = loadConfig;
 
-  /** 设置 popover: 重新加载实例 (POST /instance/reload) → instance.reloaded 事件后自动刷新 agents/skills */
+  /** 设置 popover: 重载配置 (POST /instance/reload) → instance.reloaded 事件后自动刷新 agents/skills */
   const onReloadInstance = useCallback(async () => {
     if (reloading) return;
     setReloading(true);
@@ -569,6 +573,45 @@ export const ChatbotView: React.FC = () => {
       setReloading(false);
     }
   }, [reloading, showNotice]);
+
+  /** 「重启智能体」: 请求服务端退出进程 (容器/k8s 重启策略拉起) → 重建 models.dev 目录 + 清进程内缓存.
+   *  响应先于退出返回, 正常拿到 200; 若连接被硬断 (时序竞态) 也按"已发出"处理, 不谎报失败.
+   *  成功后延迟整页刷新: restart 通常 <1s 完成, health 轮询 (5s) 捕捉不到中断 →
+   *  不给可见反馈用户会以为"没生效"; 刷新后页面回到启动态, 效果确定可见. */
+  const onRestartAgent = useCallback(async () => {
+    if (restarting) return;
+    setRestarting(true);
+    setRestartArmed(false);
+    setShowSettings(false);
+    const reloadSoon = () => setTimeout(() => { try { window.location.reload(); } catch { /* ignore */ } }, 1500);
+    try {
+      const data = await opencodeFetch<{ restarting?: boolean }>('/instance/restart', { method: 'POST' });
+      // 必须确认是"我们这条路由"的 JSON 响应: 旧服务端无该路由时, UI 的 SPA 兜底会返回 200 + HTML,
+      // 不校验就会误报"重启成功" (实际什么都没发生).
+      if (!data || typeof data !== 'object' || (data as { restarting?: boolean }).restarting !== true) {
+        setError('重启失败: 服务端未确认重启 (该实例可能不支持此操作, 需要新版镜像)');
+        return;
+      }
+      showNotice('智能体重启中… 页面即将刷新');
+      reloadSoon();
+    } catch (e) {
+      const msg = String((e as any)?.message || e);
+      // 40x = 路由不存在 (旧服务端), 明确报错; 其余 (连接被断) 视为重启已发生
+      if (/\b40[45]\b/.test(msg)) {
+        setError(`重启失败: ${msg}`);
+        return;
+      }
+      showNotice('智能体重启中… 页面即将刷新');
+      reloadSoon();
+    } finally {
+      setRestarting(false);
+    }
+  }, [restarting, showNotice]);
+
+  // 关闭设置面板 → 复位"待确认"态 (避免下次打开时误触即执行)
+  useEffect(() => {
+    if (!showSettings) setRestartArmed(false);
+  }, [showSettings]);
 
   useEffect(() => {
     if (!ready) return;
@@ -1151,7 +1194,7 @@ export const ChatbotView: React.FC = () => {
               break;
             }
             case 'instance.reloaded': {
-              // 实例重载完成 (设置 → 重新加载): 刷新 agents/skills/models/providers
+              // 实例重载完成 (设置 → 重载配置): 刷新 agents/skills/models/providers
               void loadConfigRef.current();
               showNotice('实例已重载, 配置已刷新');
               break;
@@ -1418,6 +1461,14 @@ export const ChatbotView: React.FC = () => {
 
   // 当前会话的生成错误 (session.error 事件渲染用)
   const curSessionError = sessionID ? sessionErrors[sessionID] : undefined;
+  // 异常信息整串 (展示截断 + 点击复制共用; 复制的是完整内容)
+  const errText = error
+    ? error
+    : curSessionError
+      ? `AI 回复失败${curSessionError.name ? ` · ${curSessionError.name.replace(/Error$/, '')}` : ''}: ${curSessionError.message || ''}`
+      : '';
+  // 点击异常条 → 复制完整异常信息到剪贴板 (toast 反馈「已复制」)
+  const { notify: notifyCopy } = useCopyNotifier();
   const clearSessionError = useCallback(() => {
     if (!sessionID) return;
     setSessionErrors((prev) => (prev[sessionID] ? { ...prev, [sessionID]: undefined as any } : prev));
@@ -1550,7 +1601,7 @@ export const ChatbotView: React.FC = () => {
         }
         // 2) 切 workdir (同步派 workdir:changed → service 重建 SDK client, header 跟随)
         state.setWorkdir(dir);
-        // 2.5) 自动触发实例重载 (等同设置里「重新加载」): 重读新项目磁盘配置
+        // 2.5) 自动触发实例重载 (等同设置里「重载配置」): 重读新项目磁盘配置
         //      (.opencode/agent|skill / opencode.json / ~/.config/opencode), 完成后
         //      instance.reloaded 事件自动刷新 agents/skills/models/providers.
         //      先 await 保证服务端已替换实例, 后续 listSessions 命中重载后的新实例.
@@ -2780,7 +2831,7 @@ export const ChatbotView: React.FC = () => {
 
               <div className="chat__bar-spacer" />
 
-              {/* 设置: 输入框底部齿轮按钮 + popover (重新加载实例) */}
+              {/* 设置: 输入框底部齿轮按钮 + popover (重载配置) */}
               <div className="chat__select">
                 <button
                   data-ai-pop="settings"
@@ -2820,8 +2871,32 @@ export const ChatbotView: React.FC = () => {
                               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" /></svg>
                             </span>
                             <span className="chat__modal-item-body">
-                              <span className="chat__modal-item-name">重新加载</span>
+                              <span className="chat__modal-item-name">重载配置</span>
                               <span className="chat__modal-item-desc">重载 agents / skills / tools / 配置</span>
+                            </span>
+                          </button>
+                          {/* 重启智能体 (危险): 服务端进程退出 → 容器/k8s 重启策略拉起;
+                              重建 models.dev 目录 + 清 provider/instance/SDK 等进程内缓存. 二次确认防误触. */}
+                          <button
+                            type="button"
+                            className={`chat__modal-item chat__modal-item--row${restartArmed ? ' is-danger' : ''}`}
+                            disabled={restarting}
+                            onClick={() => {
+                              if (restartArmed) { void onRestartAgent(); return; }
+                              // 持久待确认态 (关闭设置面板才复位): 避免 4s 窗口过期 → "点了没反应"
+                              setRestartArmed(true);
+                            }}
+                          >
+                            <span className="chat__modal-item-icon">
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0" /><line x1="12" y1="2" x2="12" y2="12" /></svg>
+                            </span>
+                            <span className="chat__modal-item-body">
+                              <span className="chat__modal-item-name">{restartArmed ? '再点一次确认重启 (危险操作)' : '重启智能体'}</span>
+                              <span className="chat__modal-item-desc">
+                                {restartArmed
+                                  ? '危险操作: 服务将立即中断, 所有会话/终端断开, 依赖容器 restart policy 自动拉起 (点击面板外取消)'
+                                  : '⚠️ 危险操作: 会重启 API 服务进程, 中断所有会话与终端, 仅用于刷新模型目录/清缓存'}
+                              </span>
                             </span>
                           </button>
                           {/* 工具卡默认展开 (对齐官方 shellToolPartsExpanded / editToolPartsExpanded; 默认折叠) */}
@@ -2912,14 +2987,19 @@ export const ChatbotView: React.FC = () => {
               </>
             ) : (error || curSessionError) ? (
               // 错误消息 (统一放 stats bar, 跟 notice 同位置; 优先级: retry > error > notice > stats)
+              // 异常条可点 → 复制完整异常信息到剪贴板 (展示虽截断, 复制的是全量)
               <>
                 <span
-                  className="chat__session-stats-notice is-warning"
-                  title={error || `AI 回复失败${curSessionError?.name ? ` · ${curSessionError.name.replace(/Error$/, '')}` : ''}: ${curSessionError?.message || ''}`}
+                  className="chat__session-stats-notice is-warning is-copyable"
+                  role="button"
+                  tabIndex={0}
+                  title={`${errText}\n\n点击复制异常信息`}
+                  onClick={() => notifyCopy(errText)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); notifyCopy(errText); }
+                  }}
                 >
-                  {error
-                    ? error
-                    : `AI 回复失败${curSessionError?.name ? ` · ${curSessionError.name.replace(/Error$/, '')}` : ''}: ${curSessionError?.message || ''}`}
+                  {errText}
                 </span>
                 <button
                   type="button"
@@ -2942,7 +3022,18 @@ export const ChatbotView: React.FC = () => {
               </>
             ) : notice ? (
               <>
-                <span className="chat__session-stats-notice" title={notice}>{notice}</span>
+                <span
+                  className="chat__session-stats-notice is-copyable"
+                  role="button"
+                  tabIndex={0}
+                  title={`${notice}\n\n点击复制`}
+                  onClick={() => notifyCopy(notice)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); notifyCopy(notice); }
+                  }}
+                >
+                  {notice}
+                </span>
                 <button type="button" className="chat__session-stats-x" title="关闭提醒" onClick={() => setNotice('')}>×</button>
               </>
             ) : (totalStats.tokens > 0 || totalStats.cost > 0 || totalStats.durationMs > 0 || sessionStats) ? (

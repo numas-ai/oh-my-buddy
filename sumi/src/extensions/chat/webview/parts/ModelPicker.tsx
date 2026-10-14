@@ -6,6 +6,7 @@ import {
   type ProviderInfo,
 } from '@/extensions/chat/commands/api';
 import { ProviderIcon } from './ProviderIcon';
+import { useCopyNotifier } from '../clipboard';
 
 interface ModelInfo {
   id: string;
@@ -51,6 +52,8 @@ export const ModelPicker: React.FC<Props> = ({
   const [apiKey, setApiKey] = useState('');
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState('');
+  // 弹窗内错误 → 点击复制完整错误信息
+  const { notify: notifyCopy } = useCopyNotifier();
   const [allProviders, setAllProviders] = useState<ProviderInfo[] | null>(null);
   const [, forceTick] = useState(0);
   /** 键盘导航高亮索引 (ArrowUp/Down + Enter/Tab) */
@@ -394,7 +397,16 @@ export const ModelPicker: React.FC<Props> = ({
             </div>
 
             <div className="chat__modal-body" ref={bodyRef}>
-              {error && <div className="chat__modal-error">{error}</div>}
+              {error && (
+                <div
+                  className="chat__modal-error is-copyable"
+                  role="button"
+                  tabIndex={0}
+                  title="点击复制错误信息"
+                  onClick={() => notifyCopy(error)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); notifyCopy(error); } }}
+                >{error}</div>
+              )}
               {!allProviders && <div className="chat__modal-empty">加载服务商列表中…</div>}
               {allProviders && filteredCatalog.length === 0 && (
                 <div className="chat__modal-empty">无匹配服务商</div>
@@ -441,7 +453,16 @@ export const ModelPicker: React.FC<Props> = ({
             </div>
 
             <div className="chat__modal-body chat__modal-body--apikey">
-              {error && <div className="chat__modal-error">{error}</div>}
+              {error && (
+                <div
+                  className="chat__modal-error is-copyable"
+                  role="button"
+                  tabIndex={0}
+                  title="点击复制错误信息"
+                  onClick={() => notifyCopy(error)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); notifyCopy(error); } }}
+                >{error}</div>
+              )}
               <p className="chat__modal-apikey-desc">
                 输入你的 {view.provider.name} ({view.provider.id}) API 密钥以连接账户，并在本应用中连接 {view.provider.name} ({view.provider.id}) 模型。
               </p>
