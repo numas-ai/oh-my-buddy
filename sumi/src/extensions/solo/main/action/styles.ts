@@ -2,11 +2,12 @@
  * Action 顶栏样式 — 由 ActionBar 顶部 <style>{styles}</style> 注入
  *
  * 主题色: 全部走 codeblitz/opensumi token, 不硬编码颜色
- * 布局: 单行横排 (模式切换 / sidebar 展开 / 项目选择), 高 60px 跟 sidebar mode-row 对齐
+ * 布局: 单行横排 (模式切换 / 项目选择), 高 60px 跟 sidebar mode-row 对齐
  *
  * sidebar 折叠态时承载 mode-row (替代 sidebar 内部的 mode-row):
  *   - app-action__mode: 切换模式按钮 (跟 sidebar mode-active 风格一致)
- *   - app-action__expand: 展开 sidebar 按钮 (panel-left 风格, 显示竖线槽位 = 已折叠)
+ * 折叠/展开按钮可见性互斥: sidebar 展开时显示 SideTopbar 的折叠按钮; aside 打开时显示本组件的
+ *   aside 折叠按钮 (app-action__aside). 二者不同时可见.
  */
 export const styles = `
 .app-action {
@@ -81,27 +82,6 @@ export const styles = `
   border-radius: 6px;
 }
 .app-action__mode-label { line-height: 1; color: var(--ai-accent-fg); }
-
-/* 展开按钮: 跟 sidebar 折叠按钮同款 (36x36 裸 icon)
-   - 透明 bg, hover 浅色, 显示 panel-left 风格 (外框 + 内部竖线 = 已折叠态) */
-.app-action__expand {
-  flex: 0 0 auto;
-  width: 36px;
-  height: 36px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  color: var(--ai-fg-muted);
-  border: 0;
-  border-radius: 9px;
-  cursor: pointer;
-  transition: background 0.12s, color 0.12s;
-}
-.app-action__expand:hover {
-  background: var(--ai-hover);
-  color: var(--ai-fg);
-}
 
 /* 项目选择按钮: 带文字的开关按钮 (📁 {项目名} ⌄)
    - 浅色底 (前景色 7% 混) + hover 加深; 展开态 is-open 维持

@@ -4,10 +4,14 @@
  * 装 SOLO_SLOTS.MainAction (自定义 slot 'action', 见 config/slots.ts),
  * 位于中列顶部, main (对话主区) 上方.
  *
- * 承载: 模式切换 (SOLO/IDE) / sidebar 展开 / 项目选择 (ProjectPicker popover).
- * 折叠态 sidebar 扩展: 镜像 mode-switch + expand + 当前会话标题 + 历史会话 popover + 新建会话
+ * 承载: 模式切换 (SOLO/IDE) / 项目选择 (ProjectPicker popover) / aside 折叠按钮 (aside 打开时).
+ * 折叠态 sidebar 扩展: 镜像 mode-switch + 当前会话标题 + 历史会话 popover + 新建会话
  *   (替代 sidebar 不可见时失去的新建/历史入口). 跨拓展状态共享走
  *   service/layout (LayoutToken) + executeCommand — 单向消费, 不破 §2.2 铁律.
+ *
+ * 折叠/展开按钮可见性互斥: sidebar 展开 → 只显示 SideTopbar 的「折叠 sidebar」;
+ *   aside 打开 → 只显示本组件的「关闭右列」(app-action__aside). 二者永不同时可见.
+ *   (sidebar 的「展开」按钮已移除: 因 sidebar/aside 严格互补, 关闭 aside 即自动展开 sidebar.)
  *
  * 镜像设计意图: 用户点 action 的 mode-switch 切 IDE, reload 后 mode-switch 出现在 sidebar 顶.
  *   视觉上"按钮没飞"是因为 reload 后 SoloLayout 重新 mount, mode-switch 跟 action 里的视觉位置
@@ -23,6 +27,7 @@ import { getAppMode, setAppMode, type AppMode } from '../../../../App';
 import { StateToken, type IStateService } from '../../../../service/state';
 import { LayoutToken, LAYOUT_COMMANDS, type ILayoutService } from '../../../../service/layout';
 import { requestFilePicker } from '../../../file';
+import { VersionBadge } from '../../version';
 import { styles } from './styles';
 
 function pathBasename(p: string): string {
@@ -65,22 +70,6 @@ const ModeSwitch: React.FC = () => {
     >
       <span className="app-action__mode-label">{isSolo ? 'SOLO' : 'IDE'}</span>
       <span className="app-action__mode-icon" aria-hidden>{Icon}</span>
-    </button>
-  );
-};
-
-const ExpandToggle: React.FC<{ layout: ILayoutService; commandService: CommandService }> = ({ layout, commandService }) => {
-  return (
-    <button
-      type="button"
-      className="app-action__expand"
-      title="展开 sidebar"
-      onClick={() => void commandService.executeCommand(LAYOUT_COMMANDS.sidebarExpand.id)}
-    >
-      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5">
-        <rect x="3" y="4" width="18" height="16" rx="2" />
-        <line x1="9" y1="4" x2="9" y2="20" />
-      </svg>
     </button>
   );
 };
@@ -380,8 +369,14 @@ export const ActionBar: React.FC = () => {
   // 若这里也渲染会重复; 且 SOLO 的 sidebar 折叠态与 IDE 左栏显隐无关.
   const isSoloMode = (): boolean => getAppMode() === 'solo';
   const [mirrorVisible, setMirrorVisible] = useState<boolean>(() => isSoloMode() && layout.state.sidebar.collapsed);
+  // 折叠/展开按钮可见性互斥: aside 打开时才显示 aside 的折叠按钮 (sidebar 的折叠按钮在 SideTopbar 内,
+  // sidebar 展开时才渲染; 二者永不同时可见).
+  const [asideOpen, setAsideOpen] = useState<boolean>(() => layout.state.aside.open);
   useEffect(() => {
-    return layout.subscribe((s) => setMirrorVisible(isSoloMode() && s.sidebar.collapsed));
+    return layout.subscribe((s) => {
+      setMirrorVisible(isSoloMode() && s.sidebar.collapsed);
+      setAsideOpen(s.aside.open);
+    });
   }, [layout]);
 
   const [project, setProject] = useState<string>(() => state.getWorkdir());
@@ -397,8 +392,8 @@ export const ActionBar: React.FC = () => {
         <div className="app-action__left">
           {mirrorVisible && (
             <>
+              <VersionBadge />
               <ModeSwitch />
-              <ExpandToggle layout={layout} commandService={commandService} />
               <SessionHistoryButton commandService={commandService} />
               <NewSessionButton commandService={commandService} />
             </>
@@ -406,7 +401,8 @@ export const ActionBar: React.FC = () => {
           <ProjectPickButton label={label} project={project} commandService={commandService} state={state} />
         </div>
         <div className="app-action__right">
-          <AsideToggle commandService={commandService} layout={layout} />
+          {/* 可见性互斥: 仅在 aside 打开时显示 aside 的折叠按钮 (sidebar 展开时此按钮隐藏) */}
+          {asideOpen && <AsideToggle commandService={commandService} layout={layout} />}
         </div>
       </div>
     </>

@@ -5,12 +5,15 @@
  * 提供订阅 + 操作命令. 渲染方 (SoloLayout) 读 state 渲染; 操作方
  * (ActionBar / Sidebar) 经 executeCommand 或直接调方法.
  *
- * 状态转移规则 (与 46fa122 / 754572d 对齐):
+ * 状态转移规则:
  *   - sidebar 折叠 = collapsed boolean (折叠时不渲染, 不用 1px 占位)
  *   - 折叠时记住展开宽度, 展开恢复
- *   - aside 打开 → 自动折叠 sidebar 让出空间 (并记下展开宽度)
- *   - sidebar 展开 → 自动折叠 aside (两列互斥, 同一时间只展开一列)
- *   - 关闭 aside 不自动恢复 sidebar (用户自己 expand)
+ *   - **严格互补 (互斥): 两列永远至少一列可见 (aside.open ⇔ sidebar.collapsed)**
+ *       · aside 打开     → 自动折叠 sidebar 让出空间
+ *       · 折叠 sidebar   → 自动展开 aside
+ *       · sidebar 展开   → 自动关闭 aside
+ *       · 关闭 aside     → 自动展开 sidebar
+ *     四向成对; 服务内部直接改状态 + 单次 emit (不互相调用, 避免 openAside ↔ collapseSidebar 递归/二次 emit)
  *   - aside 打开时视口 resize → 未手动拖过宽度才同步 60%; 手动拖过则保留 (只做上限收敛)
  *   - 全量状态持久化到 localStorage (刷新恢复上次布局; 手动宽度标记一并持久化)
  */
@@ -89,9 +92,13 @@ export class LayoutServiceImpl implements ILayoutService {
       explorerCollapsed: !!as.explorerCollapsed,
     };
     this.asideWidthManual = !!as.widthManual;
-    // 互斥不变量: aside 打开时 sidebar 必须折叠 (与 openAside 行为一致)
+    // 互斥不变量: aside.open ⇔ sidebar.collapsed (两列永远至少一列可见).
+    // 两个不一致态都收敛: ① aside 开着 + sidebar 也开着 → 折叠 sidebar; ② 两侧都关 (老版本残留) → 展开 aside.
     if (this._state.aside.open && !this._state.sidebar.collapsed) {
       this._state.sidebar = { ...this._state.sidebar, collapsed: true };
+    } else if (!this._state.aside.open && this._state.sidebar.collapsed) {
+      const w = this._state.aside.width > 0 ? this._state.aside.width : viewportRatioWidth();
+      this._state.aside = { ...this._state.aside, open: true, width: w };
     }
   }
 
@@ -131,16 +138,20 @@ export class LayoutServiceImpl implements ILayoutService {
   // ───────────────────────── sidebar ─────────────────────────
 
   collapseSidebar(): void {
-    const { sidebar } = this._state;
+    const { sidebar, aside } = this._state;
     if (!sidebar.collapsed) this.expandedSidebarW = sidebar.width;
     this._state.sidebar = { ...sidebar, collapsed: true };
+    // 互斥补: 折叠 sidebar → 展开 aside (两列永远至少一列可见)
+    if (!aside.open) {
+      this._state.aside = { ...aside, open: true, width: aside.width > 0 ? aside.width : viewportRatioWidth() };
+    }
     this.emit();
   }
 
   expandSidebar(): void {
     const next = this.expandedSidebarW;
     this._state.sidebar = { collapsed: false, width: next };
-    // 展开 sidebar → 折叠 aside (互斥: 同一时间只展开一列)
+    // 互斥: 展开 sidebar → 关闭 aside (两列永远至少一列可见)
     if (this._state.aside.open) this._state.aside = { ...this._state.aside, open: false };
     this.emit();
   }
@@ -165,13 +176,20 @@ export class LayoutServiceImpl implements ILayoutService {
     const cur = this._state.aside;
     const nextW = Math.max(MIN_ASIDE_W, width ?? (cur.width > 0 ? cur.width : viewportRatioWidth()));
     this._state.aside = { ...cur, open: true, width: nextW };
-    // 打开 aside → 自动折叠 sidebar 让出空间
-    if (!this._state.sidebar.collapsed) this.collapseSidebar();
+    // 互斥: 打开 aside → 折叠 sidebar 让出空间.
+    // 直接改状态, 不调 collapseSidebar() — 否则两方法互调会递归/二次 emit.
+    if (!this._state.sidebar.collapsed) {
+      this.expandedSidebarW = this._state.sidebar.width;
+      this._state.sidebar = { ...this._state.sidebar, collapsed: true };
+    }
     this.emit();
   }
 
   closeAside(): void {
+    if (!this._state.aside.open) return;
     this._state.aside = { ...this._state.aside, open: false };
+    // 互斥补: 关闭 aside → 展开 sidebar (两列永远至少一列可见)
+    this._state.sidebar = { collapsed: false, width: this.expandedSidebarW };
     this.emit();
   }
 

@@ -11,6 +11,7 @@ import { preferences } from './config/preferences';
 import { getPreloadedMetadata, preloadExtensionMetadata } from './service/extension';
 import type { ExtensionMetadata } from './service/extension';
 import { runtimeConfig } from './config/runtime';
+import { copyTextToClipboard } from './infra/clipboard';
 import { SIDE_TOPBAR_PANEL_ID, SESSIONS_PANEL_ID, ACTION_PANEL_ID, ASIDE_TOPBAR_PANEL_ID } from './extensions/solo';
 import { CHATBOT_PANEL_ID } from './extensions/chat';
 import { ASIDE_BROWSER_PANEL_ID } from './extensions/browser';
@@ -135,6 +136,8 @@ export const App: React.FC = () => {
   // opencode server 健康探测 (5s): 挂了 → codeblitz 全局 loading 覆盖 (阻止一切操作);
   // 恢复 → 自动解除 (不需要 reload; 各组件按需自行重拉).
   const [opencodeDown, setOpencodeDown] = React.useState(false);
+  /** 连接中断条点击复制后的短反馈 */
+  const [downCopied, setDownCopied] = React.useState(false);
   React.useEffect(() => {
     let cancelled = false;
     const check = async () => {
@@ -163,8 +166,12 @@ export const App: React.FC = () => {
     // 面板初始宽度 (app 侧配置; SlotRenderer 上的 defaultSize 对 tabbar 面板无效):
     // 未配置时 main-layout 的 panel.view 兜底 panelSize=335 → left 总宽 = 335+48 = 383.
     // 拖拽下限在 IdeLayout.tsx 的 SlotRenderer minResize.
+    // 注意: 左侧槽真实渲染宽 = 本值 + 48 (main-layout 左侧活动栏).
+    //   SOLO: aside 里的资源管理器走同一槽 → 208 + 48 = 256 (aside explorer 默认 256px).
+    //   IDE : 左栏 explorer 保持 268 (+48 = 316).
+    // 按 mode 区分: appConfig 在 App 组件内按当前 mode 构建, 切模式会重建 (AppRenderer key={mode}).
     panelSizes: {
-      [SlotLocation.left]: 268,   // explorer
+      [SlotLocation.left]: mode === 'solo' ? 208 : 268,
       [SlotLocation.right]: 498,  // AI 对话 (自绘右栏, 见 IdeLayout .app-ide__right)
     },
     componentCDNType: 'jsdelivr',
@@ -221,10 +228,28 @@ export const App: React.FC = () => {
       {/* opencode 挂了 → codeblitz 全局 loading 覆盖 (整页锁定, 阻止一切操作; health 恢复后自动解除) */}
       {opencodeDown && (
         <div className="app-global-loading" role="status" aria-live="polite">
-          <div className="app-global-loading__box">
+          <div
+            className="app-global-loading__box is-copyable"
+            role="button"
+            tabIndex={0}
+            title="点击复制"
+            onClick={() => {
+              void copyTextToClipboard('连接中断, 正在重连');
+              setDownCopied(true);
+              window.setTimeout(() => setDownCopied(false), 1500);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                void copyTextToClipboard('连接中断, 正在重连');
+                setDownCopied(true);
+                window.setTimeout(() => setDownCopied(false), 1500);
+              }
+            }}
+          >
             <div className="app-boot__spinner" aria-hidden />
             <div className="app-global-loading__text">
-              连接中断, 正在重连
+              {downCopied ? '已复制' : '连接中断, 正在重连'}
               <span className="app-global-loading__dots" aria-hidden="true" />
             </div>
           </div>

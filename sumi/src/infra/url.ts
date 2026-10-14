@@ -7,10 +7,11 @@
  *   1. URL `?directory=` — 一次性入口: 首次访问时读到即视为"选择项目", 写入 localStorage
  *      并立即从地址栏抹掉 (replaceState, 不 reload), 之后地址栏保持干净.
  *   2. localStorage `NUMAS_WORKDIR` — 跨刷新记住上次选择.
- *   3. 都没有 → '' (未选择项目, UI 显示「选择项目」).
+ *   3. 都没有 → **启动默认取当前 workdir** (server `/path` 的 directory) 作为项目 (resolveBoot 里 adopt);
+ *      仅当 /path 不可用时才回 '' (UI 显示「选择项目」空态).
  *
- * 后端 `/path` 响应的 directory **只作技术兜底** (解析 home 锚点 + 未选项目时让发消息/
- * 请求仍能带上 header), **不会成为"已选项目"**: 已选与否只看 getWorkdir().
+ * 后端 `/path` 响应的 directory: 平时只作技术兜底 (解析 home 锚点 + 未选项目时让发消息/请求带 header),
+ *   仅在"未显式选择项目"时被 adopt 为默认项目 (见 resolveBoot).
  */
 
 import { normalizeCwdPath } from './path';
@@ -211,6 +212,9 @@ let _bootReady = false;
 
 /** 启动就绪解析: 消费 URL ?directory= (已在 getWorkdir 首次调用时完成) + 探一次 /path.
  *  /path 的 directory 只作技术兜底, 不成为已选项目.
+ *  默认加载: 未选择任何项目时, 用当前 workdir (/path.directory = server 当前工作目录) 兜底为"已选项目",
+ *    免去首次空态手动选择. 在 AppRenderer 挂载前完成 (App wsReady 门控 await 本函数) → 不触发
+ *    workdir:changed, 因此不会连带"选项目→自动展开 aside"的布局副作用.
  *  启动探活: 若已选 workdir 在 server 端不存在 (目录被删/重命名残留), 清空 + 删 localStorage.
  *  探活失败 (network/5xx) 保留 workdir — 短暂不可用不视为路径删除. */
 export function resolveBoot(): Promise<void> {
@@ -226,6 +230,8 @@ export function resolveBoot(): Promise<void> {
         }).catch(() => { /* network 错保留 */ })
       : Promise.resolve();
     await Promise.all([resolveFallback(), probe]);
+    // 默认加载当前 workdir 作为项目路径 (未显式选择时的兜底, 仅首次)
+    if (!getWorkdir() && getFallbackDirectory()) setWorkdir(getFallbackDirectory());
     _bootReady = true;
   })();
 }
