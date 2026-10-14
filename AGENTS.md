@@ -287,6 +287,11 @@ AI **仍需 `question`**:
 - **22** ENV HOME=/home 但交互工具链装在 /root → zsh 终端 node 缺失
 - **58** ubuntu:24.04 未预装 ca-certificates → https apt 源证书校验失败
 - **59** pip 镜像源 USTC/清华对部分 wheel 返 403, 阿里云可下
+- **72** 基础镜像 OS 实际 ≠ Dockerfile 注释写 (Debian trixie vs Ubuntu noble)
+- **73** code-server 容器化必须关闭 workspace trust + supportUntrustedWorkspaces
+- **74** SSH 密码重试多次被 fail2ban 临时锁 (1~5 分钟)
+- **84** 本机冒烟 `127.0.0.1` 命中宿主机残留服务 → 误判镜像 401/异常
+- **85** 本机 bun install 物化 bun.lock 镜像 URL → 构建后工作区变脏
 
 **opencode 服务端 / 路径 / 沙箱 / CLI / 网络** → `memory/pitfalls-server.md`
 - **1** opencode 服务端 WorkspaceRoutingMiddleware 静默 fallback 到 process.cwd()
@@ -336,6 +341,18 @@ AI **仍需 `question`**:
 - **62** codeblitz webview 双层 iframe + 内层重建清 DOM: 外挂层挂 iframe body
 - **75** SplitPanel hidePanel 闭包每次渲染换新 → effect deps 无限重渲染 (OOM crash)
 - **77** textarea 对 Option(Alt)+Enter 无默认换行 (需手动插 \n; Shift+Enter 有)
+- **78** 模块顶层 const 工具函数遇循环引用 → ReferenceError (TDZ)
+- **79** 重构误删 state 声明 → 组件整体崩溃 (白屏)
+- **80** macOS 截图粘贴进 chat 输入框重复 (剪贴板同图多格式)
+- **81** 发送带图消息后 1 图变 2 图 (本地乐观 part 与 server part 未去重)
+- **82** /compact 报 v2.compact 未开放, 应走 v1 session.summarize
+- **83** 本地 followup 队列在 SSE 断线/发送失败后永久卡住 (已删队列对齐官方)
+- **86** SOLO 顶栏 hover 浮层被祖先 overflow:hidden 裁切 → portal 到 body + fixed
+- **87** hover 弹层里图片首帧空白: 静态资源无缓存头 + 弹层无占位 (预热 + aspect-ratio)
+- **88** explorer 槽宽由 appConfig.panelSizes[slot] 决定 (+48), savedSize/defaultSize 对 tabbar 无效
+- **89** codeblitz 欢迎页: startupEditor:'none' 静默关闭; 替换组件走 runtimeConfig.WelcomePage (MDX + 四级兜底)
+- **90** opensumi SplitPanel 拖拽条负 margin 叠加在边界 → 无列间隔; 真实留白需归零 margin + width
+- **91** opensumi 编辑区空态: 默认组件无背景图时不渲染 → 用 ComponentRegistry.register('editor-empty') 兜底
 
 **vsix / 扩展 / 浏览器 / pdf / registry** → `memory/pitfalls-extension.md`
 - **10** 内置浏览器默认 <embed> 渲染 PDF 不可靠 (依赖 Chrome PDF 插件)

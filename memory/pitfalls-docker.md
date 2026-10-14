@@ -95,3 +95,19 @@
 - **根因**: sshd + pam_fail2ban (或同类 IP 限速), 密码错误 (包括 sshpass echo 方式鉴权失败) 计数累加到阈值触发 ban; ban 时长 60~300s 可配置.
 - **解决方案**: ① 命令间**主动 sleep 5~10s** 别背靠背发; ② 失败一次后等 60s 重试, 别连发; ③ 优先用 ssh key + agent 鉴权绕开密码限速; ④ 长命令 (build/log tail) 跑一次拿够数据, 别一条一查.
 - **排查方法**: Permission denied 一次后立刻 `sleep 60 && sshpass -e ssh ... 'echo READY'`, 通则继续, 不通再 sleep 180.
+
+#### 84. 本机 docker 端口冒烟用 127.0.0.1 命中宿主机残留服务 → 误判镜像 401/异常
+
+- **现象**: 镜像构建成功, 容器 `-p 4096:4096` 已起, 但 `curl http://127.0.0.1:4096/api/fs/list?path=.` 返回 `{"_tag":"UnauthorizedError","message":"Authentication required"}` 401, `GET /` 却 200; 浏览器打开 `http://localhost:4096` 前端一切正常 (explorer / 会话 / 扩展全加载).
+- **根因**: 宿主机上有一个**历史残留进程**仍占着 IPv4 loopback 同端口 (`opencode serve --port 4096 --hostname 127.0.0.1`, 有自己的鉴权); macOS `localhost` 优先解析 `::1` → 命中 Docker 容器 (监听 `[::]:4096`), `127.0.0.1` → 命中残留进程. 两个监听同时存在即"串台".
+- **复现路径**: `lsof -nP -iTCP:4096` 出现两条 LISTEN (`com.docke ... *:4096` + `opencode ... 127.0.0.1:4096`); 对比 `curl -w '%{http_code}' http://127.0.0.1:4096/<api>` (401) vs `curl http://localhost:4096/<api>` (200).
+- **解决方案**: ① 冒烟/联调统一用 `localhost` (或 `[::1]`), 别用 `127.0.0.1`; ② 或换宿主端口 `-p 8096:4096` 规避; ③ 或清掉占用进程 (可能属别人的服务, 需用户确认). 判据: lsof 出现两个 LISTEN 就是串台.
+- **排查方法**: 冒烟返回 401/403/异常先别怀疑镜像, 先 `lsof -nP -iTCP:<port>` 数监听个数; `curl -D -` 看响应头 (残留 opencode 带 `www-authenticate: Basic realm="Secure Area"`).
+
+#### 85. 本机跑 bun install 会把 opencode/bun.lock 物化成镜像 tarball URL → 构建后 git 工作区变脏
+
+- **现象**: `bash scripts/docker-build.sh` (step1 `bun install`) 跑完, `git status --short` 多出 ` M opencode/bun.lock`, diff 数百行, 但内容只是每行依赖第二个字段从 `""` 变成 `https://registry.npmmirror.com/<pkg>/-/<pkg>.tgz`, 无真实依赖/版本变化.
+- **根因**: 本机 `~/.npmrc` 配了 `registry=https://registry.npmmirror.com`, bun install 读 npmrc 后把 lockfile 中省略的 tarball 地址补全为镜像 URL (仓库内 `opencode/bunfig.toml` 无 registry 行, 是机器级配置泄漏进 lockfile).
+- **复现路径**: `git status --short` 出现 `M opencode/bun.lock`; `git diff opencode/bun.lock | grep '^[+-]'` 过滤后全是 URL 物化差异.
+- **解决方案**: ① 构建后提交前 `git checkout -- opencode/bun.lock` 还原 (纯噪音, 不影响已构建镜像); ② 或在无镜像 registry 的干净环境/CI 跑 bun install; ③ 不要把这种 lockfile churn 混进功能 commit.
+- **排查方法**: 看到 bun.lock 大 diff 先 `git diff --stat` + 过滤内容确认是否纯 URL 物化; 是则还原, 别当成依赖升级.

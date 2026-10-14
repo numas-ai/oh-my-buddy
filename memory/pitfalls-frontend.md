@@ -337,3 +337,62 @@
 - **解决方案 (已修)**: **删除整个客户端队列机制** (queueBySession/FollowupDock/flushQueue/paused/failed/sending/followupMode 设置 + styles), busy 时直接 `firePrompt` (steer, 服务端拾取) — 与官方 TUI 行为完全一致, 卡队列问题从根上消失.
 - **教训**: ① 自建"自动续发"复杂度极高 (事件丢失/失败重试/暂停语义的组合爆炸), 官方用 steer + 服务端边界拾取解决了同一问题; ② 遇到"官方怎么做"时直接找官方实例 (用户可提供 4096 端口实例) 看真实行为, 比读源码猜更快.
 - **适用**: 任何"客户端自己实现排队/重试"的场景 — 先确认服务端是否已有等价语义 (steer/queue delivery).
+
+#### 86. SOLO 顶栏内做 hover 浮层, 就地 absolute 被祖先 `overflow:hidden` 裁切 → 必须 portal 到 body + fixed
+
+- **现象**: 给 SOLO 左侧栏顶栏 (`SideTopbar`) 的模式切换按钮左侧加"版本标识", hover 弹出二维码浮层 — 浮层用就地 `position: absolute` 时被裁掉/只露一半; IDE 顶栏同样.
+- **根因**: `.app-solo` / `.app-solo__sidebar` / `.app-solo__main` / `.app-solo__aside` 全是 `overflow: hidden` (`sumi/src/styles/app-shell.css:32,42`), 任何 descendant 的 absolute 浮层超出容器边界即被裁; 加高 `z-index` 无效 (裁切发生在祖先, 不是层叠上下文).
+- **解决方案**: 浮层用 `createPortal(popover, document.body)` + `position: fixed` (坐标取锚点 `getBoundingClientRect()` → left=rect.left, top=rect.bottom+gap); `ActionBar` 历史会话弹层已是同款 (`createPortal`). 因标识与浮层是**两段独立 DOM**, 用 ~120ms 延迟关闭 + 双向 `onMouseEnter` 抵消"指针从标识移到浮层途中闪断".
+- **排查方法**: 弹层"看不见 / 被切一半"先查祖先链有没有 `overflow: hidden` (顶层 `.app-solo` 必命中); 确认是裁切而非层叠后直接 portal 出到 body 最稳.
+- **适用**: SOLO 自定义布局内任何 tooltip / popover / 下拉 / 右键菜单.
+- **来源**: 2026-10 版本标识 (公测版 v0.1.0) + hover 二维码浮层需求.
+
+#### 87. hover 弹层里图片"有时候显示不了" — 静态资源无缓存头 + 弹层无占位 → 首帧空白细条
+
+- **现象**: 版本标识 hover 弹二维码浮层, 有时浮层里是空白 (只一个细长空框), 切模式 (整页 reload) 后更容易出现.
+- **根因**: ① opencode 磁盘 UI 托管 (`server/shared/ui.ts`) 对**非 HTML 静态资源不写 `cache-control`/`etag`/`last-modified`** (实测 `curl -I /qq-group.jpg` 只有 `content-type`/`vary`) → 浏览器无验证器, 整页 reload 后重新拉; ② 浮层里的 `<img>` 只有 `width:220px; height:auto`, **图未到之前高度塌成 0** → 视觉上就是"空白细条". 模式切换 = 整页 reload, 是最容易撞上的入口 (用户手已在鼠标上, reload 后立刻 hover).
+- **解决方案 (前端侧, 不改服务端)**:
+  - **预热**: 模块加载即 `new Image().src = qrUrl` (后台拉好, hover 命中内存缓存); 见 `sumi/src/extensions/solo/version/VersionBadge.tsx`.
+  - **预留比例**: `.app-version-badge__qr { width:220px; aspect-ratio: 1156/2055; height:auto }` — 图未到时按比例占位, 不再塌成细条; 加载后 `height:auto` 用真实尺寸 (改图也不会错).
+- **排查方法**: "弹层里图空白"先 `curl -I <asset>` 看有没有 `cache-control`; 无则每次整页加载都会重拉. 验证预热: 页面加载后 (未 hover) 就应看到该图请求 (network 面板), hover 时 `img.complete === true`.
+- **适用**: 任何"hover/弹层里放图片/大资源"的场景 (尤其整页 reload 频繁的入口).
+
+#### 88. 左右槽 (explorer) 面板宽度由 `appConfig.panelSizes[slot]` 决定 (渲染 = 值 + 48); `SlotRenderer` 的 `savedSize`/`defaultSize` 对 tabbar 面板**无效**
+
+- **现象**: 想改 "aside 资源管理器默认宽", 改 `SoloLayout` 传的 `savedSize` (或 CSS `.app-solo__aside-sidebar` 宽) 完全没用 — 实测传 400/180 渲染宽恒为 317.
+- **根因**: 该槽是 **tabbar 面板** (`<SlotRenderer slot={SlotLocation.left} isTabbar />`). tabbar 面板宽度取自 **appConfig** `panelSizes[slot]` (`App.tsx`), **不是** SlotRenderer 上的 `savedSize`/`defaultSize` (App.tsx 注释已写"defaultSize 对 tabbar 面板无效"). 且 **真实渲染宽 = panelSizes 值 + 48** (main-layout 左侧活动栏恒占 48; `App.tsx` 旧注释 "left 总宽 = 335+48" 同源).
+- **实测**: `panelSizes[left]=268 → 316`; `=208 → 257`. 与 `index.html` 的 `left.size` 无关 (运行期由 panelSizes 决定).
+- **解决方案**: 改 `sumi/src/App.tsx` 的 `panelSizes[SlotLocation.left]` (目标渲染宽 − 48). 需按模式区分时用 `mode === 'solo' ? 208 : 268` — `appConfig` 在 App 组件内构建 + 切模式重建 (AppRenderer key={mode}), 天然可按模式给不同值 (SOLO aside 256 / IDE 左栏 316 互不影响).
+- **排查方法**: 面板宽度"改了不生效"先确认是不是 tabbar 面板 (`isTabbar`); 是则只认 `panelSizes`, 且记得 **+48** 换算; 用 `getBoundingClientRect().width` 实测槽宽验证, 别信 prop.
+
+#### 89. codeblitz 欢迎页: `startupEditor:'none'` 静默关闭; 替换组件走 `runtimeConfig.WelcomePage`
+
+- **现象**: 想启用/替换欢迎页, 改了 `runtimeConfig` 没反应; 排查发现 `startupEditor:'none'` 时 `WelcomeContribution.onDidRestoreState` 首分支直接 `return` → 既不打开欢迎页, 也**不兜底打开任何默认文件**.
+- **机制** (`@codeblitzjs/ide-sumi-core/lib/client/welcome/welcome.contributon.js`):
+  - 替换组件: `runtimeConfig.WelcomePage` (类型 `React.FC`, 见 common/types.d.ts) — 传入即替换默认 `EditorWelcomeComponent`, 并换掉 tab 图标.
+  - 打开时机: `startupEditor === 'welcomePage'` → `openWelcome()` (`welcome://`); `'readme'` → 找 README; 其它值 → 不打开.
+  - `welcome://` 的 resource/组件由 codeblitz 自己注册, 自研拓展**不要**重复注册 scheme.
+- **解决方案**: `config/runtime.ts` 设 `startupEditor:'welcomePage'` + `WelcomePage: <自研组件>`; 自研组件放 `extensions/welcome`, 用 MDX (`@mdx-js/mdx` `evaluate`) 运行时渲染远程 README (`remark-gfm` 处理表格, CSP 需 `unsafe-eval`); 手动入口注册 `numas.welcome.open` 命令开 `welcome://`.
+- **坑 (连带)**: ① 远程 fetch 需目标站 CORS (`raw.githubusercontent.com` 返回 `access-control-allow-origin: *` 可用); ② MDX 默认不含 GFM (表格/删除线/任务列表要加 `remark-gfm`); ③ MDX 渲染的是裸 `<a href>`, 同标签点击会把整个工作台导航走 → 渲染后 DOM 后处理补 `target=_blank/rel`; ④ 链接/按钮色**别用** `var(--button-background)` — 本主题该 token 解析为白 → 白字白底不可见 (呼应 #35), 直接用品牌橙 `var(--ai-orange, #ff9b40)`.
+- **兜底链 (本项目采用)**: 远程 fetch 成功 → 渲染 + localStorage last-good; 失败 → 缓存; 再无 → 构建期内置快照 (`fallback.md`, webpack raw-loader); 仍无 → 提示 + 重试按钮.
+
+#### 90. opensumi `SplitPanel` 拖拽条默认**负 margin 叠加在边界** → 没有列间隔; 要真实留白需归零 margin
+
+- **现象**: IDE 模式想给 left | main 之间加"呼吸空间", 只调大 `--resizer-w` 无效 — 间隔没变.
+- **根因**: `.resize-handle-horizontal` 默认 `margin-left/-right: calc(w / -2)` (把 w 宽的命中区**反向外扩**居中叠在边界上) → 净占位 0, 只是"摸得到、看不见"的分割线载体. 所以加宽只让命中区更大, 不会撑开列间距.
+- **解决方案**: 横向留白 = **把 handle 的左右 margin 归零 + width 设为目标间隔** (`width: var(--ide-gap); margin-left:0; margin-right:0`) → 净占位 = 间隔本身; 再去掉 `::before` 的 1px 分割线 (纯留白). 实测 IDE `left|main` 与 `main|right` 各留 8px, 且拖拽仍精确生效 (左槽 316→436 跟随鼠标位移 120).
+- **注意**: 只改**横向** handle (`resize-handle-horizontal`); 纵向 (`...-vertical`, main|bottom) 保留原叠加式分割线, 别一起改 (行间隔需求不同).
+- **排查方法**: 列间距调不动先看是不是 SplitPanel 的 handle 在"负 margin 叠加"; `getBoundingClientRect()` 量 handle 的实际占位宽 (为 0 即叠加态).
+
+#### 91. opensumi 编辑区空态: 官方默认组件无背景图时**不渲染任何东西** → 关闭所有 tab 后纯空白; 用 `ComponentRegistry.register('editor-empty', …)` 兜底
+
+- **现象**: 关掉所有编辑器 tab 后, 编辑主区一片空白 (只有 `.kt_editor_background` 空壳), 看着像坏了.
+- **根因** (`@opensumi/ide-editor/lib/browser/editor.view.js`): `group.resources.length === 0` 时会渲染空态 — 取组件注册表 key `editor-empty` 的 `views[0]`; 官方默认组件 `EditorEmptyComponent({editorBackgroundImage})` 在**没有背景图**时 `return null` → 什么都不画.
+- **解决方案**: 注册自定义组件覆盖该 key (Map.set 语义):
+  ```ts
+  @Autowired(ComponentRegistry) componentRegistry!: ComponentRegistry;
+  componentRegistry.register('editor-empty', { id: 'numas-editor-empty', weight: 999, component: EditorEmpty });
+  ```
+  (在 `ClientAppContribution.onStart` 里注册一次; `ComponentRegistry` 从 `@opensumi/ide-core-browser` 导入.)
+- **本项目做法**: `sumi/src/contribution/editor-empty/` 纯静态卡片 (图标 + 「暂无打开的编辑器」+ 提示文案, 用户拍板不做操作按钮).
+- **排查方法**: "空区域该有内容却是空白" 先找框架的组件注册表 key (opensumi `ComponentRegistry.getComponentRegistryInfo(key)`) — 有 key 就说明是"可被覆盖的默认实现"问题, 覆盖比从外面叠 DOM 稳.
