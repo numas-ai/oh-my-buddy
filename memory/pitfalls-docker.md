@@ -111,3 +111,11 @@
 - **复现路径**: `git status --short` 出现 `M opencode/bun.lock`; `git diff opencode/bun.lock | grep '^[+-]'` 过滤后全是 URL 物化差异.
 - **解决方案**: ① 构建后提交前 `git checkout -- opencode/bun.lock` 还原 (纯噪音, 不影响已构建镜像); ② 或在无镜像 registry 的干净环境/CI 跑 bun install; ③ 不要把这种 lockfile churn 混进功能 commit.
 - **排查方法**: 看到 bun.lock 大 diff 先 `git diff --stat` + 过滤内容确认是否纯 URL 物化; 是则还原, 别当成依赖升级.
+
+#### 92. buildx `--push` 默认带 provenance/sbom 证明 → OCI index 多出 `unknown/unknown` 条目 → 部分 k8s/containerd 起不来
+
+- **现象**: 同一镜像内容, **legacy 单架构 manifest** (`oscollege/numas:v0.2.6`) 集群可用; **buildx 推的 `v0.3.0`** 在 k8s 起不来 (节点是 amd64; 本地同 arch 直接 run 却正常).
+- **根因**: `docker buildx build --push` **默认追加 attestation** (provenance/sbom) → manifest list = 目标平台 + 一条 `platform: {architecture: unknown, os: unknown}`. 部分 k8s/containerd / 私有镜像代理 / 准入扫描在"多架构 index + unknown 条目"上**拉取或选平台失败** (老式单架构 v2 manifest 无此问题).
+- **复现**: `docker manifest inspect <tag>` 看到 unknown/unknown 条目; 在 arm64 主机上 `docker pull` 该 index (只声明 amd64) 直接 `no matching manifest for linux/arm64/v8`; 而单架构 manifest 的 tag 任何平台都能拉 (靠模拟跑).
+- **解决方案**: buildx 加 **`--provenance=false --sbom=false`** (index 只剩目标平台一条, 行为对齐 legacy); 或干脆用 legacy `docker build` + `docker push` (单架构 v2 manifest). 本项目 `scripts/docker-build.sh --push` 已加这两个 flag.
+- **排查方法**: 镜像"起不来"先 `docker manifest inspect` 看**形态** (单架构 vs 多架构 index/unknown 条目); 再在**同架构**机器上直接 run 一次, 区分"镜像问题"vs"集群/运行时问题".

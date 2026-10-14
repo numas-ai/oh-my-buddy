@@ -292,6 +292,7 @@ AI **仍需 `question`**:
 - **74** SSH 密码重试多次被 fail2ban 临时锁 (1~5 分钟)
 - **84** 本机冒烟 `127.0.0.1` 命中宿主机残留服务 → 误判镜像 401/异常
 - **85** 本机 bun install 物化 bun.lock 镜像 URL → 构建后工作区变脏
+- **92** buildx --push 默认带 provenance/sbom → index 多 unknown 条目 → 部分 k8s 起不来
 
 **opencode 服务端 / 路径 / 沙箱 / CLI / 网络** → `memory/pitfalls-server.md`
 - **1** opencode 服务端 WorkspaceRoutingMiddleware 静默 fallback 到 process.cwd()

@@ -161,9 +161,15 @@ echo "[numas]   mode:       $([ "$PUSH" = true ] && echo push || echo load)"
 
 # 本机/同构部署: legacy docker build (无需 docker/dockerfile frontend 镜像, docker hub 受限环境可用);
 # 跨平台/推远端 (--push) 才走 buildx (需 docker hub 可达拉 frontend).
+# ⚠ buildx 默认会追加 provenance/sbom 证明清单 (index 里多出 unknown/unknown 条目) —
+#   部分 k8s/containerd (或私有镜像代理/扫描准入) 会因此拉取/选平台失败.
+#   实测: 同一镜像单架构 v2 manifest 可正常起, 带 unknown 条目的 OCI index 起不来 (oscollege/numas v0.3.0).
+#   故 --push 一律关掉证明, 让 index 只剩目标平台一条 (与 legacy 单架构行为对齐).
 if [ "$PUSH" = true ]; then
   docker buildx build \
     --platform "$PLATFORM" \
+    --provenance=false \
+    --sbom=false \
     --build-arg "NUMAS_VERSION=$VERSION" \
     --build-arg "NUMAS_GIT_SHA=$GIT_SHA" \
     --build-arg "OPENCODE_ARTIFACT=opencode-${TARGET_NAME}" \
