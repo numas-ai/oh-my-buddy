@@ -29,6 +29,9 @@ import { IdeRightTopbar } from './IdeRightTopbar';
 const styles = `
 .app-ide {
   --resizer-w: 6px;
+  --ide-gap: 4px;
+  /* 列间留白的"通道"底色: 与顶部 action 栏/活动栏同款规则 (97% mix 偏灰 token) */
+  --ide-gap-bg: color-mix(in srgb, var(--editor-background, #ffffff) 97%, var(--editor-foreground, #1f2328));
   width: 100%; height: 100%;
   display: flex; flex-direction: column;
   min-width: 0; min-height: 0;
@@ -104,13 +107,17 @@ const styles = `
 }
 .app-ide [class*="titleActions"] span[class*="iconAction"]::before,
 .app-ide [class*="titleActions"] span[class*="btnAction"]::before { display: inline-block !important; }
-/* SplitPanel 拖拽条: 宽度/命中区对齐 SOLO resizer (--resizer-w 6px), 1px 线居中留呼吸感 */
+/* 列间留白 (left | main): 横向拖拽条改成**真实间隔** (--ide-gap 8px, 正 margin 撑开),
+   并去掉叠加式 1px 分割线 → 插槽之间留呼吸空间 (靠底色差异区分边界) */
 .app-ide [class*="resize-handle-horizontal"] {
-  width: var(--resizer-w) !important;
-  margin-left: calc(var(--resizer-w) / -2) !important;
-  margin-right: calc(var(--resizer-w) / -2) !important;
+  width: var(--ide-gap) !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  /* 留白通道底色 (SplitPanel 自身白底会盖住 body 背景, 只能直接给留白元素上色) */
+  background: var(--ide-gap-bg) !important;
 }
-.app-ide [class*="resize-handle-horizontal"]::before { left: calc(var(--resizer-w) / 2) !important; }
+.app-ide [class*="resize-handle-horizontal"]::before { display: none !important; }
+/* 行间 (main | bottom) 保留原叠加式 6px 命中区 + 居中 1px 分割线 */
 .app-ide [class*="resize-handle-vertical"] {
   height: var(--resizer-w) !important;
   margin-top: calc(var(--resizer-w) / -2) !important;
@@ -124,35 +131,21 @@ const styles = `
 .app-ide__right {
   flex: 0 0 498px; width: 498px; min-width: 0; min-height: 0;
   display: flex; flex-direction: column;
-  border-left: 1px solid var(--editor-border);
   background: var(--editor-background);
   overflow: hidden;
   transition: flex-basis 260ms cubic-bezier(0.22, 1, 0.36, 1), width 260ms cubic-bezier(0.22, 1, 0.36, 1);
 }
-.app-ide__right.is-collapsed { flex-basis: 0; width: 0; border-left: none; }
+.app-ide__right.is-collapsed { flex-basis: 0; width: 0; }
 /* 拖拽中关闭过渡, 避免宽度跳动跟随滞后 */
 .app-ide__right.is-dragging { transition: none; }
-/* 右栏 resizer: 6px 命中区 + 1px 主线, 对齐 SplitPanel resizer (--resizer-w) */
+/* 右栏 resizer: 8px 真实间隔 (同 --ide-gap), 无分割线 (纯留白) */
 .app-ide__right-resizer {
-  flex: 0 0 var(--resizer-w, 6px);
-  width: var(--resizer-w, 6px);
+  flex: 0 0 var(--ide-gap, 8px);
+  width: var(--ide-gap, 8px);
   cursor: col-resize;
-  background: transparent;
+  background: var(--ide-gap-bg);
   position: relative;
   z-index: 2;
-}
-.app-ide__right-resizer::before {
-  content: '';
-  position: absolute;
-  top: 0; bottom: 0; left: 50%;
-  width: 1px;
-  background: var(--editor-border);
-  transform: translateX(-0.5px);
-}
-.app-ide__right-resizer:hover::before,
-.app-ide__right-resizer.is-dragging::before {
-  background: var(--button-background, #6366f1);
-  width: 2px;
 }
 /* SlotRenderer 的 wrapper 默认 block, 会让内部 chatbot 的 flex 高度失效 (内容撑高顶出 composer);
    这里把它变成受约束的 flex 列容器. 注意排除 topbar 内的 <style> 标签 (否则会被当 flex 项占高) */

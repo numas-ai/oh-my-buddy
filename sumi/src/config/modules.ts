@@ -24,6 +24,7 @@ import { BrandModule } from '../service/brand';
 import { SessionModule } from '../service/session';
 
 import { EditorRestoreFallbackModule } from '../contribution/editor-restore';
+import { EditorEmptyModule } from '../contribution/editor-empty';
 
 import { SideTopbarModule, SessionsModule, ActionModule, AsideTopbarModule } from '../extensions/solo';
 import { ChatbotModule } from '../extensions/chat';
@@ -32,6 +33,7 @@ import { FilesModule } from '../extensions/file';
 import { MarkdownModule } from '../extensions/markdown';
 import { BrowserModule } from '../extensions/browser';
 import { WorkspaceModule } from '../extensions/workspace';
+import { WelcomeModule } from '../extensions/welcome';
 
 export function getBuiltinModules(_opts?: { vsixMetadata?: any[] }): any[] {
   return [
@@ -50,6 +52,7 @@ export function getBuiltinModules(_opts?: { vsixMetadata?: any[] }): any[] {
 
     // contribution 层 (lifecycle / UI 状态)
     EditorRestoreFallbackModule, // 官方 workbench tab 恢复的延迟兜底 (早期 handlesUri 未就绪)
+    EditorEmptyModule,     // 编辑区空态兜底 (关闭所有 tab 后替代纯空白; 注册 editor-empty)
 
     // vsix 拓展 (UI 组件, 走 ComponentContribution 装 solo slot)
     SideTopbarModule,      // 左列 sidebar.action (模式切换 + 折叠)
@@ -61,6 +64,7 @@ export function getBuiltinModules(_opts?: { vsixMetadata?: any[] }): any[] {
     FilesModule,           // 文件树: 上传/下载/压缩 zip (右键 + 标题栏上传按钮)
     MarkdownModule,        // .md 预览 (marked+shiki+katex+mermaid; 右键/标题栏/命令)
     BrowserModule,         // 内置浏览器 (aside.browser 视图 + numas-browser:// 编辑器 tab)
+    WelcomeModule,         // 欢迎页 (MDX 渲染远程 README; 替换 codeblitz 默认 + 命令 numas.welcome.open)
 
     // workspace 根同步 (官方 explorer/editor 读 IWorkspaceService; 查看模式依赖)
     WorkspaceModule,

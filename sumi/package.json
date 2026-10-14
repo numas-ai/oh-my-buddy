@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@codeblitzjs/ide-core": "2.4.6",
+    "@mdx-js/mdx": "^3.1.1",
     "@opencode-ai/sdk": "^1.18.11",
     "@opensumi/ide-file-tree-next": "3.6.5-next-1766394426.0",
     "@opensumi/ide-terminal-next": "3.6.5-next-1766394426.0",
@@ -24,6 +25,7 @@
     "pdfjs-dist": "^4.10.38",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
+    "remark-gfm": "^4.0.1",
     "shiki": "^4.4.1"
   },
   "devDependencies": {
